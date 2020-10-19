@@ -31,31 +31,38 @@ if [ ! -f /etc/ocserv/certs/server-key.pem ] || [ ! -f /etc/ocserv/certs/server-
 	cd /etc/ocserv/certs
 	certtool --generate-privkey --outfile ca-key.pem
 	cat > ca.tmpl <<-EOCA
-	cn = "$CA_CN"
-	organization = "$CA_ORG"
-	serial = 1
-	expiration_days = $CA_DAYS
-	ca
-	signing_key
-	cert_signing_key
-	crl_signing_key
-	EOCA
+cn = "${CA_CN-cn}"
+organization = "${CA_ORG-"ocserv"}"
+serial = 1
+expiration_days = ${CA_DAYS-3650}
+ca
+signing_key
+cert_signing_key
+crl_signing_key
+EOCA
 	certtool --generate-self-signed --load-privkey ca-key.pem --template ca.tmpl --outfile ca.pem
 	certtool --generate-privkey --outfile server-key.pem 
+	
 	cat > server.tmpl <<-EOSRV
-	cn = "$SRV_CN"
-	organization = "$SRV_ORG"
-	expiration_days = $SRV_DAYS
-	signing_key
-	encryption_key
-	tls_www_server
-	EOSRV
+cn = "${SRV_CN-$CA_CN}"
+organization = "${SRV_ORG-$CA_ORG}"
+expiration_days = ${SRV_DAYS-$CA_DAYS}
+signing_key
+encryption_key
+tls_www_server
+EOSRV
+	DNS_NAME=${DNS_NAME-"www.ocserv.local"}
+	for dns in `echo ${DNS_NAME//,/ }`
+	do
+	echo "dns_name = $dns" >> server.tmpl
+	done
+	cat server.tmpl
 	certtool --generate-certificate --load-privkey server-key.pem --load-ca-certificate ca.pem --load-ca-privkey ca-key.pem --template server.tmpl --outfile server-cert.pem
 
 	# Create a test user
-	if [ -z "$NO_TEST_USER" ] && [ ! -f /etc/ocserv/ocpasswd ]; then
-		echo "Create test user 'test' with password 'test'"
-		echo 'test:Route,All:$5$DktJBFKobxCFd7wN$sn.bVw8ytyAaNamO.CvgBvkzDiFR6DaHdUzcif52KK7' > /etc/ocserv/ocpasswd
+	if [ -n "${USERNAME}" ] && [ ! -f /etc/ocserv/ocpasswd ]; then
+		echo "Create user '${USERNAME}' "
+		echo -e "${PASSWORD}\n${PASSWORD}\n" |ocpasswd -c /etc/ocserv/ocpasswd -g "Route,All" ${USERNAME}
 	fi
 fi
 
